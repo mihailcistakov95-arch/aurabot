@@ -47,13 +47,12 @@ INSTALL_NOTE = (
 
 UNKNOWN_TEXT = "Не понял команду. Нажми /start, чтобы увидеть меню."
 
-SUPPORT_TEXT = "Функционал поддержки автора скоро появится 🙂"
+DONATE_URL = "https://dalink.to/empyre9n"
 
 MAIN_MENU = {
     "inline_keyboard": [
         [{"text": "⬇️ Скачать APK", "callback_data": "download"}],
-        [{"text": "ℹ️ Что умеет Aura", "callback_data": "about"}],
-        [{"text": "💚 Поддержать автора", "callback_data": "support"}],
+        [{"text": "💚 Поддержать автора", "url": DONATE_URL}],
     ]
 }
 
@@ -129,10 +128,6 @@ def handle_update(update: dict):
         api_post("answerCallbackQuery", json={"callback_query_id": cq["id"]})
         if data == "download":
             send_apk(chat_id)
-        elif data == "about":
-            send_welcome(chat_id)
-        elif data == "support":
-            send_message(chat_id, SUPPORT_TEXT)
         return
 
 
