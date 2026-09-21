@@ -8,6 +8,7 @@
 (поллинг — только для разработки, для постоянной работы используется вебхук)
 """
 
+import json
 import logging
 import os
 import sys
@@ -21,7 +22,9 @@ log = logging.getLogger("aura-bot")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "changeme")
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
-APK_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "aura.apk")
+ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+APK_PATH = os.path.join(ASSETS_DIR, "aura.apk")
+BANNER_PATH = os.path.join(ASSETS_DIR, "banner.png")
 
 APP_DESCRIPTION = (
     "🌿 *Aura* — приложение, которое помогает меньше залипать в телефоне.\n\n"
@@ -44,10 +47,13 @@ INSTALL_NOTE = (
 
 UNKNOWN_TEXT = "Не понял команду. Нажми /start, чтобы увидеть меню."
 
+SUPPORT_TEXT = "Функционал поддержки автора скоро появится 🙂"
+
 MAIN_MENU = {
     "inline_keyboard": [
         [{"text": "⬇️ Скачать APK", "callback_data": "download"}],
         [{"text": "ℹ️ Что умеет Aura", "callback_data": "about"}],
+        [{"text": "💚 Поддержать автора", "callback_data": "support"}],
     ]
 }
 
@@ -70,6 +76,25 @@ def send_message(chat_id, text, reply_markup=None):
     api_post("sendMessage", json=payload)
 
 
+def send_welcome(chat_id):
+    if not os.path.exists(BANNER_PATH):
+        send_message(chat_id, APP_DESCRIPTION, reply_markup=MAIN_MENU)
+        log.error("Banner not found at %s", BANNER_PATH)
+        return
+    with open(BANNER_PATH, "rb") as f:
+        api_post(
+            "sendPhoto",
+            data={
+                "chat_id": chat_id,
+                "caption": APP_DESCRIPTION,
+                "parse_mode": "Markdown",
+                "reply_markup": json.dumps(MAIN_MENU),
+            },
+            files={"photo": ("aura-banner.png", f, "image/png")},
+            timeout=30,
+        )
+
+
 def send_apk(chat_id):
     if not os.path.exists(APK_PATH):
         send_message(chat_id, "Файл APK сейчас недоступен на сервере, напиши автору бота.")
@@ -90,7 +115,7 @@ def handle_update(update: dict):
         chat_id = msg["chat"]["id"]
         text = (msg.get("text") or "").strip()
         if text.startswith("/start") or text.startswith("/help"):
-            send_message(chat_id, APP_DESCRIPTION, reply_markup=MAIN_MENU)
+            send_welcome(chat_id)
         elif text.startswith("/download"):
             send_apk(chat_id)
         else:
@@ -105,7 +130,9 @@ def handle_update(update: dict):
         if data == "download":
             send_apk(chat_id)
         elif data == "about":
-            send_message(chat_id, APP_DESCRIPTION, reply_markup=MAIN_MENU)
+            send_welcome(chat_id)
+        elif data == "support":
+            send_message(chat_id, SUPPORT_TEXT)
         return
 
 
