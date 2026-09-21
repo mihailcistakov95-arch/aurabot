@@ -21,6 +21,7 @@ log = logging.getLogger("aura-bot")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "changeme")
+AUTHOR_CHAT_ID = os.environ.get("AUTHOR_CHAT_ID", "")
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 APK_PATH = os.path.join(ASSETS_DIR, "aura.apk")
@@ -49,9 +50,14 @@ UNKNOWN_TEXT = "Не понял команду. Нажми /start, чтобы у
 
 DONATE_URL = "https://dalink.to/empyre9n"
 
+FEEDBACK_PROMPT = "✍️ Напиши сюда любое сообщение — отзыв, идею или баг — и я передам его автору."
+FEEDBACK_SENT = "Спасибо! Передал автору 🙌"
+FEEDBACK_UNAVAILABLE = "Приём отзывов сейчас не настроен, попробуй позже."
+
 MAIN_MENU = {
     "inline_keyboard": [
         [{"text": "⬇️ Скачать APK", "callback_data": "download"}],
+        [{"text": "💬 Отзывы и предложения", "callback_data": "feedback"}],
         [{"text": "💚 Поддержать автора", "url": DONATE_URL}],
     ]
 }
@@ -68,8 +74,10 @@ def api_post(method: str, **kwargs):
         return None
 
 
-def send_message(chat_id, text, reply_markup=None):
-    payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+def send_message(chat_id, text, reply_markup=None, parse_mode="Markdown"):
+    payload = {"chat_id": chat_id, "text": text}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     if reply_markup:
         payload["reply_markup"] = reply_markup
     api_post("sendMessage", json=payload)
@@ -92,6 +100,31 @@ def send_welcome(chat_id):
             files={"photo": ("aura-banner.png", f, "image/png")},
             timeout=30,
         )
+
+
+def forward_feedback(msg: dict):
+    chat_id = msg["chat"]["id"]
+    text = (msg.get("text") or "").strip()
+
+    # Чтобы найти свой AUTHOR_CHAT_ID в логах Render: он всегда печатается сюда
+    log.info("Message from chat_id=%s: %s", chat_id, text[:200])
+
+    if not AUTHOR_CHAT_ID:
+        send_message(chat_id, FEEDBACK_UNAVAILABLE)
+        return
+
+    if str(chat_id) == str(AUTHOR_CHAT_ID):
+        # Автор пишет сам себе (например, тестирует бота) — пересылать некуда
+        send_message(chat_id, "Это твой собственный чат с ботом — некому пересылать 🙂")
+        return
+
+    sender = msg.get("from", {})
+    username = sender.get("username")
+    name = sender.get("first_name", "")
+    who = f"@{username}" if username else name or "аноним"
+    forwarded = f"💬 Отзыв от {who} (id {chat_id}):\n\n{text}"
+    send_message(AUTHOR_CHAT_ID, forwarded, parse_mode=None)
+    send_message(chat_id, FEEDBACK_SENT)
 
 
 def send_apk(chat_id):
@@ -117,8 +150,11 @@ def handle_update(update: dict):
             send_welcome(chat_id)
         elif text.startswith("/download"):
             send_apk(chat_id)
-        else:
+        elif text.startswith("/"):
             send_message(chat_id, UNKNOWN_TEXT)
+        else:
+            # Любое обычное сообщение (не команда) считаем отзывом/предложением
+            forward_feedback(msg)
         return
 
     if "callback_query" in update:
@@ -128,6 +164,8 @@ def handle_update(update: dict):
         api_post("answerCallbackQuery", json={"callback_query_id": cq["id"]})
         if data == "download":
             send_apk(chat_id)
+        elif data == "feedback":
+            send_message(chat_id, FEEDBACK_PROMPT)
         return
 
 
